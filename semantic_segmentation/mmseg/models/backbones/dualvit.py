@@ -166,7 +166,7 @@ class DualAttention(nn.Module):
 
         self.mlp_proxy = nn.Sequential(
             nn.Linear(dim, 4 * dim),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Linear(4 * dim, dim),
         )
         self.proxy_ln = nn.LayerNorm(dim)
@@ -360,16 +360,16 @@ class Stem(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=7, stride=2,
                       padding=3, bias=False),  # 112x112
-            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
-            nn.ReLU(inplace=True),
+            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=False),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
                       padding=1, bias=False),  # 112x112
-            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
-            nn.ReLU(inplace=True),
+            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=False),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
                       padding=1, bias=False),  # 112x112
-            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
-            nn.ReLU(inplace=True),
+            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=False),
         )
         self.proj = nn.Conv2d(hidden_dim,
                               out_channels,
@@ -472,7 +472,7 @@ class DualVit(nn.Module):
                 self.proxy_ln = nn.LayerNorm(embed_dims[0])
                 self.se = nn.Sequential(
                     nn.Linear(embed_dims[0], embed_dims[0]),
-                    nn.ReLU(inplace=True),
+                    nn.ReLU(inplace=False),
                     nn.Linear(embed_dims[0], 2*embed_dims[0])
                 )
                 trunc_normal_(self.q, std=.02)
