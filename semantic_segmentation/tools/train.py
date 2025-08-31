@@ -6,6 +6,9 @@ import time
 
 import mmcv
 import torch
+# Enable anomaly detection
+torch.autograd.set_detect_anomaly(True)
+
 from mmcv.runner import init_dist
 from mmcv.utils import Config, DictAction, get_git_hash
 
