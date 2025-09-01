@@ -43,7 +43,7 @@ class EncModule(nn.Module):
         self.encoding = nn.Sequential(
             Encoding(channels=in_channels, num_codes=num_codes),
             build_norm_layer(encoding_norm_cfg, num_codes)[1],
-            nn.ReLU(inplace=True))
+            nn.ReLU(inplace=False))
         self.fc = nn.Sequential(
             nn.Linear(in_channels, in_channels), nn.Sigmoid())
 
@@ -54,7 +54,7 @@ class EncModule(nn.Module):
         batch_size, channels, _, _ = x.size()
         gamma = self.fc(encoding_feat)
         y = gamma.view(batch_size, channels, 1, 1)
-        output = F.relu_(x + x * y)
+        output = F.relu(x + x * y)
         return encoding_feat, output
 
 

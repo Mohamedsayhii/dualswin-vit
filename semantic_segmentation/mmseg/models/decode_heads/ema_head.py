@@ -158,9 +158,9 @@ class EMAHead(BaseDecodeHead):
         identity = feats
         feats = self.ema_mid_conv(feats)
         recon = self.ema_module(feats)
-        recon = F.relu(recon, inplace=True)
+        recon = F.relu(recon, inplace=False)
         recon = self.ema_out_conv(recon)
-        output = F.relu(identity + recon, inplace=True)
+        output = F.relu(identity + recon, inplace=False)
         output = self.bottleneck(output)
         if self.concat_input:
             output = self.conv_cat(torch.cat([x, output], dim=1))

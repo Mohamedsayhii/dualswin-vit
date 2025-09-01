@@ -7,7 +7,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from functools import partial
 from mmcv_custom import load_checkpoint
 from mmseg.utils import get_root_logger
-from ..builder import BACKBONES
+from mmseg.models.builder import BACKBONES
 import math
 from mmcv.cnn import build_norm_layer
 import warnings
@@ -507,7 +507,7 @@ class DualVit(nn.Module):
 
             norm = norm_layer(embed_dims[i])
             norm_proxy = norm_layer(embed_dims[i])
-            cur += depths[i]
+            cur = cur + depths[i]
 
             setattr(self, f"patch_embed{i + 1}", patch_embed)
             setattr(self, f"block{i + 1}", block)
@@ -667,11 +667,11 @@ class DualVit(nn.Module):
                         feat_w_bgn = cur_w[j]
                         feat_w_end = min(cur_w[j] + feat_w, max_w)
                     out_full[j][:,:,feat_h_bgn:feat_h_end,feat_w_bgn:feat_w_end] = feat
-                    cur_w[j] += feat_w
+                    cur_w[j] = cur_w[j] + feat_w
 
             for j, feat in enumerate(cur_out):
                 feat_h, feat_w = feat.shape[2:]
-                cur_h[j] += feat_h
+                cur_h[j] = cur_h[j] + feat_h
 
         return out_full
 
