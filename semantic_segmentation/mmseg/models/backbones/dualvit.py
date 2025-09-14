@@ -384,6 +384,7 @@ class DualVit(nn.Module):
         self.num_stages = 4
         self.depths = depths
         self.sep_stage = 2
+        self.embed_dims = embed_dims  # Store embed_dims as instance variable
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
         
