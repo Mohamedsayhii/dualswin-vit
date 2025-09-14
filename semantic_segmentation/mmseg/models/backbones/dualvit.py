@@ -391,10 +391,13 @@ class DualVit(nn.Module):
         self.swin_backbone = swin_t(weights=Swin_T_Weights.IMAGENET1K_V1)
         self.swin_backbone.head = nn.Identity()
         self.swin_backbone.norm = nn.Identity()
+        swin_dims = [96, 192, 384, 768]
 
-        # Projections to match original embed_dims
-        self.proj0 = nn.Linear(96, embed_dims[0])
-        self.proj1 = nn.Linear(192, embed_dims[1])
+        # ---- Projection layers (Swin → DualViT) ----
+        self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
+        self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
+        self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
+        self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
 
         for i in range(self.num_stages):
             if i == 0:
