@@ -477,8 +477,8 @@ class DualVit(nn.Module):
             raise TypeError('pretrained must be a str or None')
 
     def forward_sep(self, x):
-        print("Input shape to forward_sep:", x.shape)
-        B, _, input_H, input_W = x.shape
+        print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
+        B, C, input_H, input_W = x.shape  # Store input shape
         outs = []
 
         # Stage 0 pixel pathway with Swin
@@ -486,8 +486,7 @@ class DualVit(nn.Module):
         print("After features[0]:", x_swin.shape)
         x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
         print("After features[1]:", x_swin.shape)
-        # Flatten to (B, H/4 * W/4, 96)
-        H, W = x_swin.shape[1], x_swin.shape[2]  # H/4, W/4
+        H, W = x_swin.shape[1], x_swin.shape[2]  # H/4, W/4 (128, 128)
         x_swin = x_swin.view(B, -1, 96)  # (B, H/4 * W/4, 96)
         print("After flatten:", x_swin.shape)
         x = self.proj0(x_swin)  # (B, H/4 * W/4, 64)
@@ -526,7 +525,6 @@ class DualVit(nn.Module):
         x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8 * W/8, 192)
         print("After features[2]:", x_swin.shape)
         # Compute H, W from input dimensions
-        _, _, input_H, input_W = x.shape  # [B, C, 512, 512]
         H, W = input_H // 8, input_W // 8  # 64, 64 for 512x512
         B, N, C = x_swin.shape
         expected_N = H * W  # 4096 for 512x512
