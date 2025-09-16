@@ -486,7 +486,7 @@ class DualVit(nn.Module):
         x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
         print("After features[1]:", x_swin.shape)
         # Flatten to (B, H/4 * W/4, 96)
-        H, W = x_swin.shape[2], x_swin.shape[3]  # H/4, W/4
+        H, W = x_swin.shape[1], x_swin.shape[2]  # H/4, W/4
         x_swin = x_swin.view(B, -1, 96)  # (B, H/4 * W/4, 96)
         print("After flatten:", x_swin.shape)
         x = self.proj0(x_swin)  # (B, H/4 * W/4, 64)
