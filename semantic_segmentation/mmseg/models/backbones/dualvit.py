@@ -477,6 +477,7 @@ class DualVit(nn.Module):
             raise TypeError('pretrained must be a str or None')
 
     def forward_sep(self, x):
+        print("Input shape to forward_sep:", x.shape)
         B, _, input_H, input_W = x.shape
         outs = []
 
@@ -522,16 +523,25 @@ class DualVit(nn.Module):
         semantics = norm_semantics(semantics)
 
         # Stage 1 pixel pathway with Swin
-        x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8, W/8, 192)
+        x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8 * W/8, 192)
         print("After features[2]:", x_swin.shape)
-        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks: (B, H/8, W/8, 192)
+        # Compute H, W from input dimensions
+        _, _, input_H, input_W = x.shape  # [B, C, 512, 512]
+        H, W = input_H // 8, input_W // 8  # 64, 64 for 512x512
+        B, N, C = x_swin.shape
+        expected_N = H * W  # 4096 for 512x512
+        if N != expected_N:
+            print(f"Warning: Expected N={expected_N}, got {N}. Truncating to expected tokens.")
+            x_swin = x_swin[:, :expected_N, :]  # Truncate to [1, 4096, 192]
+        x_swin = x_swin.view(B, H, W, C)  # (B, 64, 64, 192)
+        print("After reshape for features[3]:", x_swin.shape)
+        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks: (B, 64, 64, 192)
         print("After features[3]:", x_swin.shape)
-        H //= 2
-        W //= 2
-        x_swin = x_swin.view(B, -1, 192)  # (B, H/8 * W/8, 192)
+        x_swin = x_swin.view(B, -1, 192)  # (B, 64*64, 192)
         print("After flatten stage 1:", x_swin.shape)
-        x = self.proj1(x_swin)  # (B, H/8 * W/8, 128)
+        x = self.proj1(x_swin)  # (B, 64*64, 128)
         print("After proj1:", x.shape)
+
         semantics_embed = getattr(self, f"proxy_embed2")
         semantics = semantics_embed(semantics)
         block = getattr(self, f"block2")
