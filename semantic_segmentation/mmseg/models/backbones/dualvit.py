@@ -564,10 +564,8 @@ class DualVit(nn.Module):
         print("After features[0]:", x_swin.shape)
         x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
         print("After features[1]:", x_swin.shape)
-        H, W = x_swin.shape[1], x_swin.shape[2]  # H/4, W/4 (128, 128)
-        x_swin = x_swin.view(B, -1, 96)  # (B, H/4 * W/4, 96)
-        print("After flatten:", x_swin.shape)
-        x = self.proj0(x_swin)  # (B, H/4 * W/4, 64)
+        H, W = x_swin.shape[1], x_swin.shape[2]
+        x = self.proj0(x_swin.flatten(2).transpose(1, 2))  # [B, H*W, embed_dims[0]]
         print("After proj0:", x.shape)
         # Reshape for semantic pathway
         x_map = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
@@ -602,20 +600,10 @@ class DualVit(nn.Module):
         # Stage 1 pixel pathway with Swin
         x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8 * W/8, 192)
         print("After features[2]:", x_swin.shape)
-        # Compute H, W from input dimensions
-        H, W = input_H // 8, input_W // 8  # 64, 64 for 512x512
-        B, N, C = x_swin.shape
-        expected_N = H * W  # 4096 for 512x512
-        if N != expected_N:
-            print(f"Warning: Expected N={expected_N}, got {N}. Truncating to expected tokens.")
-            x_swin = x_swin[:, :expected_N, :]  # Truncate to [1, 4096, 192]
-        x_swin = x_swin.view(B, H, W, C)  # (B, 64, 64, 192)
-        print("After reshape for features[3]:", x_swin.shape)
-        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks: (B, 64, 64, 192)
+        H, W = x_swin.shape[1], x_swin.shape[2]
+        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks
         print("After features[3]:", x_swin.shape)
-        x_swin = x_swin.view(B, -1, 192)  # (B, 64*64, 192)
-        print("After flatten stage 1:", x_swin.shape)
-        x = self.proj1(x_swin)  # (B, 64*64, 128)
+        x = self.proj1(x_swin.flatten(2).transpose(1, 2))  # [B, H*W, embed_dims[1]]
         print("After proj1:", x.shape)
 
         semantics_embed = getattr(self, f"proxy_embed2")
