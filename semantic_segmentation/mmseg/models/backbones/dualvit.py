@@ -309,6 +309,56 @@ class DualBlock(nn.Module):
         x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x), H, W))
         return x.clone(), semantics.clone()
 
+class Stem(nn.Module):
+    def __init__(self, in_channels, stem_hidden_dim, out_channels):
+        super().__init__()
+        hidden_dim = stem_hidden_dim
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_dim, kernel_size=7, stride=2,
+                      padding=3, bias=False),  # 112x112
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
+                      padding=1, bias=False),  # 112x112
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
+                      padding=1, bias=False),  # 112x112
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
+            nn.ReLU(inplace=True),
+        )
+        self.proj = nn.Conv2d(hidden_dim,
+                              out_channels,
+                              kernel_size=3,
+                              stride=2,
+                              padding=1)
+        self.norm = nn.LayerNorm(out_channels)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.proj(x)
+        _, _, H, W = x.shape
+        x = x.flatten(2).transpose(1, 2)
+        x = self.norm(x)
+        return x, H, W
+
 class DownSamples(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -395,13 +445,18 @@ class DualVit(nn.Module):
         swin_dims = [96, 192, 384, 768]
         print("Swin backbone features:", self.swin_backbone.features)  # Debug print
 
-        # ---- Projection layers (Swin → DualViT) ----
+        # Projection layers (Swin → DualViT)
         self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
         self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
         self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
         self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
 
         for i in range(self.num_stages):
+            if i == 0:
+                patch_embed = Stem(in_chans, stem_hidden_dim, embed_dims[i])
+            else:
+                patch_embed = DownSamples(embed_dims[i - 1], embed_dims[i])
+
             if i == 0:
                 self.q = nn.Parameter(torch.empty((64, embed_dims[0])), requires_grad=True)
                 self.q_embed = nn.Sequential(
@@ -441,11 +496,12 @@ class DualVit(nn.Module):
                         drop_path=dpr[cur + j], 
                         norm_layer=norm_layer)
                 for j in range(depths[i])])
-            
+
             norm = norm_layer(embed_dims[i])
             norm_proxy = norm_layer(embed_dims[i])
             cur = cur + depths[i]
             
+            setattr(self, f"patch_embed{i + 1}", patch_embed)
             setattr(self, f"block{i + 1}", block)
             setattr(self, f"norm{i + 1}", norm)
             if i != self.num_stages - 1:
@@ -561,10 +617,13 @@ class DualVit(nn.Module):
         B = x.shape[0]
         outs = []
         for i in range(self.sep_stage, self.num_stages):
-            patch_embed = DownSamples(self.embed_dims[i - 1], self.embed_dims[i])
+            patch_embed = getattr(self, f"patch_embed{i + 1}")
             block = getattr(self, f"block{i + 1}")
-            print("Input device to forward_merge:", x.device)  # Should be cuda:0
+            print(f"patch_embed{i + 1}.proj.weight device:", patch_embed.proj.weight.device)
+            print("Input device to forward_merge:", x.device)
+            print("Input shape to forward_merge:", x.shape)
             x, H, W = patch_embed(x)
+            print(f"After patch_embed{i + 1}:", x.shape)
             semantics_embed = getattr(self, f"proxy_embed{i + 1}")
             semantics = semantics_embed(semantics)
             x = torch.cat([x, semantics], dim=1)
@@ -637,6 +696,8 @@ class DualVit(nn.Module):
         return out_full
 
     def forward(self, x):
+        print("Input device to forward:", x.device)
+        print("Model device (sample parameter):", self.proj0.weight.device)
         if self.training:
             return self.forward_single(x)
         else:
