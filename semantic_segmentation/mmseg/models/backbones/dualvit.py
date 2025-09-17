@@ -469,6 +469,7 @@ class DualVit(nn.Module):
         self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
         self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
         self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
+        print(f"proj0 weight shape: {self.proj0.weight.shape}")  # Should be [64, 96]
 
         for i in range(self.num_stages):
             if i == 0:
