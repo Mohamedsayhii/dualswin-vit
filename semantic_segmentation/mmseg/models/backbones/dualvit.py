@@ -418,6 +418,24 @@ class SemanticEmbed(nn.Module):
         semantics = self.proj_proxy(semantics)
         return semantics
 
+class CustomPatchMerging(nn.Module):
+    def __init__(self, dim, out_dim):
+        super().__init__()
+        self.dim = dim
+        self.out_dim = out_dim
+        self.reduction = nn.Linear(4 * dim, out_dim, bias=False)
+        self.norm = nn.LayerNorm(4 * dim)
+
+    def forward(self, x):
+        B, H, W, C = x.shape  # [B, 128, 128, 96]
+        if H % 2 != 0 or W % 2 != 0:
+            x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
+        x = x.view(B, H // 2, 2, W // 2, 2, C).permute(0, 1, 3, 2, 4, 5).reshape(B, H // 2, W // 2, 4 * C)
+        x = self.norm(x)
+        x = self.reduction(x)
+        x = x.view(B, -1, self.out_dim)  # [B, (H/2)*(W/2), out_dim]
+        return x
+
 @BACKBONES.register_module()
 class DualVit(nn.Module):
     def __init__(self,  
@@ -437,11 +455,12 @@ class DualVit(nn.Module):
         self.embed_dims = embed_dims  # Store embed_dims as instance variable
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
-        
+
         # Swin Transformer for pixel pathway in early stages with pretrained weights
         self.swin_backbone = swin_t(weights=Swin_T_Weights.IMAGENET1K_V1)
         self.swin_backbone.head = nn.Identity()
         self.swin_backbone.norm = nn.Identity()
+        self.swin_backbone.features[2] = CustomPatchMerging(dim=96, out_dim=192)
         swin_dims = [96, 192, 384, 768]
         print("Swin backbone features:", self.swin_backbone.features)  # Debug print
 
