@@ -451,6 +451,9 @@ class DualVit(nn.Module):
             if i != self.num_stages - 1:
                 setattr(self, f"norm_proxy{i + 1}", norm_proxy)
 
+        # Ensure all parameters are on the gpu
+        self.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+
     def init_weights(self, pretrained=None):
         def _init_weights(m):
             if isinstance(m, nn.Linear):
@@ -560,6 +563,7 @@ class DualVit(nn.Module):
         for i in range(self.sep_stage, self.num_stages):
             patch_embed = DownSamples(self.embed_dims[i - 1], self.embed_dims[i])
             block = getattr(self, f"block{i + 1}")
+            print("Input device to forward_merge:", x.device)  # Should be cuda:0
             x, H, W = patch_embed(x)
             semantics_embed = getattr(self, f"proxy_embed{i + 1}")
             semantics = semantics_embed(semantics)

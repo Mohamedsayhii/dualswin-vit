@@ -135,6 +135,7 @@ def main():
         train_cfg=cfg.get('train_cfg'),
         test_cfg=cfg.get('test_cfg'))
 
+    model = model.to('cuda')  # Ensure model is on GPU
     logger.info(model)
 
     datasets = [build_dataset(cfg.data.train)]
