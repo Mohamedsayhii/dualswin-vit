@@ -439,20 +439,23 @@ class CustomPatchMerging(nn.Module):
 @BACKBONES.register_module()
 class DualVit(nn.Module):
     def __init__(self,  
-        stem_hidden_dim=32, 
-        embed_dims=[64, 128, 320, 448],
-        num_heads=[2, 4, 10, 14], 
-        mlp_ratios=[8, 8, 4, 3], 
-        drop_path_rate=0., 
-        depths=[3, 4, 6, 3],
-        norm_layer=partial(nn.LayerNorm, eps=1e-6), 
-        use_checkpoint=False):
+                 stem_hidden_dim=32, 
+                 embed_dims=[64, 128, 320, 448],
+                 num_heads=[2, 4, 10, 14], 
+                 mlp_ratios=[8, 8, 4, 3], 
+                 drop_path_rate=0., 
+                 depths=[3, 4, 6, 3],
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), 
+                 use_checkpoint=False,
+                 swin_dims=[96, 192, 384, 768]):
         super().__init__()
         in_chans=3
         self.num_stages = 4
         self.depths = depths
         self.sep_stage = 2
-        self.embed_dims = embed_dims  # Store embed_dims as instance variable
+        self.embed_dims = embed_dims
+        self.swin_dims = swin_dims
+        print(f"Initializing DualVit with swin_dims={swin_dims}, embed_dims={embed_dims}")
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
 
@@ -466,10 +469,14 @@ class DualVit(nn.Module):
 
         # Projection layers (Swin → DualViT)
         self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
+        print(f"proj0 weight shape after init: {self.proj0.weight.shape} (expected: [{embed_dims[0]}, {swin_dims[0]}])")
+        if self.proj0.weight.shape != torch.Size([embed_dims[0], swin_dims[0]]):
+            print(f"Warning: proj0 initialized incorrectly. Expected [{embed_dims[0]}, {swin_dims[0]}], got {self.proj0.weight.shape}. Reinitializing.")
+            self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
+            print(f"proj0 reinitialized to: {self.proj0.weight.shape}")
         self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
         self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
         self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
-        print(f"proj0 weight shape: {self.proj0.weight.shape}")  # Should be [64, 96]
 
         for i in range(self.num_stages):
             if i == 0:
@@ -546,14 +553,21 @@ class DualVit(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-        if isinstance(pretrained, str):
-            self.apply(_init_weights)
-            logger = get_root_logger()
-            load_checkpoint(self, pretrained, strict=False, logger=logger)
-        elif pretrained is None:
-            self.apply(_init_weights)
-        else:
-            raise TypeError('pretrained must be a str or None')
+            print(f"Initializing weights with pretrained={pretrained}")
+            if isinstance(pretrained, str):
+                self.apply(_init_weights)
+                logger = get_root_logger()
+                print(f"Loading checkpoint from {pretrained}")
+                load_checkpoint(self, pretrained, strict=False, logger=logger)
+            else:
+                self.apply(_init_weights)
+                print("No pretrained checkpoint provided, using fresh weights")
+
+        # Log projection layer shapes for debugging
+        print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
+        print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
+        print(f"proj2 weight shape: {self.proj2.weight.shape} (expected: [{self.embed_dims[2]}, {self.swin_dims[2]}])")
+        print(f"proj3 weight shape: {self.proj3.weight.shape} (expected: [{self.embed_dims[3]}, {self.swin_dims[3]}])")
 
     def forward_sep(self, x):
         print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
@@ -567,6 +581,8 @@ class DualVit(nn.Module):
         print("After features[1]:", x_swin.shape)
         H, W = x_swin.shape[1], x_swin.shape[2]
         x = self.proj0(x_swin.flatten(2).transpose(1, 2))  # [B, H*W, embed_dims[0]]
+        print("Before proj0 input shape:", x_swin_flat.shape)
+        print(f"proj0 weight shape in forward_sep: {self.proj0.weight.shape}")
         print("After proj0:", x.shape)
         # Reshape for semantic pathway
         x_map = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
