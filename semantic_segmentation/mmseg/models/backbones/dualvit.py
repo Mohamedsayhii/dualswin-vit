@@ -580,9 +580,10 @@ class DualVit(nn.Module):
         x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
         print("After features[1]:", x_swin.shape)
         H, W = x_swin.shape[1], x_swin.shape[2]
-        x = self.proj0(x_swin.flatten(2).transpose(1, 2))  # [B, H*W, embed_dims[0]]
+        x_swin_flat = x_swin.flatten(1, 2)
         print("Before proj0 input shape:", x_swin_flat.shape)
         print(f"proj0 weight shape in forward_sep: {self.proj0.weight.shape}")
+        x = self.proj0(x_swin_flat)  # [B, H*W, embed_dims[0]]
         print("After proj0:", x.shape)
         # Reshape for semantic pathway
         x_map = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
@@ -620,7 +621,7 @@ class DualVit(nn.Module):
         H, W = x_swin.shape[1], x_swin.shape[2]
         x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks
         print("After features[3]:", x_swin.shape)
-        x = self.proj1(x_swin.flatten(2).transpose(1, 2))  # [B, H*W, embed_dims[1]]
+        x = self.proj1(x_swin.flatten(1, 2))  # [B, H*W, embed_dims[1]]
         print("After proj1:", x.shape)
 
         semantics_embed = getattr(self, f"proxy_embed2")
