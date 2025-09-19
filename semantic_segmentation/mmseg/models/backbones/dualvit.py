@@ -433,7 +433,6 @@ class CustomPatchMerging(nn.Module):
         x = x.view(B, H // 2, 2, W // 2, 2, C).permute(0, 1, 3, 2, 4, 5).reshape(B, H // 2, W // 2, 4 * C)
         x = self.norm(x)
         x = self.reduction(x)
-        x = x.view(B, -1, self.out_dim)  # [B, (H/2)*(W/2), out_dim]
         return x
 
 @BACKBONES.register_module()
