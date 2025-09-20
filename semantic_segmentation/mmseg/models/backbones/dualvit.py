@@ -447,14 +447,16 @@ class DualVit(nn.Module):
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), 
                  use_checkpoint=False,
                  swin_dims=[96, 192, 384, 768]):
+
         super().__init__()
         in_chans=3
         self.num_stages = 4
         self.depths = depths
+        
         self.sep_stage = 2
         self.embed_dims = embed_dims
         self.swin_dims = swin_dims
-        print(f"Initializing DualVit with swin_dims={swin_dims}, embed_dims={embed_dims}")
+        # print(f"Initializing DualVit with swin_dims={swin_dims}, embed_dims={embed_dims}")
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
 
@@ -464,15 +466,15 @@ class DualVit(nn.Module):
         self.swin_backbone.norm = nn.Identity()
         self.swin_backbone.features[2] = CustomPatchMerging(dim=96, out_dim=192)
         swin_dims = [96, 192, 384, 768]
-        print("Swin backbone features:", self.swin_backbone.features)  # Debug print
+        # print("Swin backbone features:", self.swin_backbone.features)  # Debug print
 
         # Projection layers (Swin → DualViT)
         self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
-        print(f"proj0 weight shape after init: {self.proj0.weight.shape} (expected: [{embed_dims[0]}, {swin_dims[0]}])")
+        # print(f"proj0 weight shape after init: {self.proj0.weight.shape} (expected: [{embed_dims[0]}, {swin_dims[0]}])")
         if self.proj0.weight.shape != torch.Size([embed_dims[0], swin_dims[0]]):
-            print(f"Warning: proj0 initialized incorrectly. Expected [{embed_dims[0]}, {swin_dims[0]}], got {self.proj0.weight.shape}. Reinitializing.")
+            # print(f"Warning: proj0 initialized incorrectly. Expected [{embed_dims[0]}, {swin_dims[0]}], got {self.proj0.weight.shape}. Reinitializing.")
             self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
-            print(f"proj0 reinitialized to: {self.proj0.weight.shape}")
+            # print(f"proj0 reinitialized to: {self.proj0.weight.shape}")
         self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
         self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
         self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
@@ -530,6 +532,7 @@ class DualVit(nn.Module):
             setattr(self, f"patch_embed{i + 1}", patch_embed)
             setattr(self, f"block{i + 1}", block)
             setattr(self, f"norm{i + 1}", norm)
+
             if i != self.num_stages - 1:
                 setattr(self, f"norm_proxy{i + 1}", norm_proxy)
 
@@ -563,50 +566,55 @@ class DualVit(nn.Module):
                 print("No pretrained checkpoint provided, using fresh weights")
 
         # Log projection layer shapes for debugging
-        print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
-        print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
-        print(f"proj2 weight shape: {self.proj2.weight.shape} (expected: [{self.embed_dims[2]}, {self.swin_dims[2]}])")
-        print(f"proj3 weight shape: {self.proj3.weight.shape} (expected: [{self.embed_dims[3]}, {self.swin_dims[3]}])")
+        # print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
+        # print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
+        # print(f"proj2 weight shape: {self.proj2.weight.shape} (expected: [{self.embed_dims[2]}, {self.swin_dims[2]}])")
+        # print(f"proj3 weight shape: {self.proj3.weight.shape} (expected: [{self.embed_dims[3]}, {self.swin_dims[3]}])")
 
     def forward_sep(self, x):
-        print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
+        # print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
         B, C, input_H, input_W = x.shape  # Store input shape
         outs = []
 
         # Stage 0 pixel pathway with Swin
         x_swin = self.swin_backbone.features[0](x)  # Patch embedding: (B, H/4, W/4, 96)
-        print("After features[0]:", x_swin.shape)
+        # print("After features[0]:", x_swin.shape)
         x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
-        print("After features[1]:", x_swin.shape)
+        # print("After features[1]:", x_swin.shape)
         H, W = x_swin.shape[1], x_swin.shape[2]
         x_swin_flat = x_swin.flatten(1, 2)
-        print("Before proj0 input shape:", x_swin_flat.shape)
-        print(f"proj0 weight shape in forward_sep: {self.proj0.weight.shape}")
+        # print("Before proj0 input shape:", x_swin_flat.shape)
+        # print(f"proj0 weight shape in forward_sep: {self.proj0.weight.shape}")
         x = self.proj0(x_swin_flat)  # [B, H*W, embed_dims[0]]
-        print("After proj0:", x.shape)
+        # print("After proj0:", x.shape)
         # Reshape for semantic pathway
         x_map = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
-        print("After x_map:", x_map.shape)
+        # print("After x_map:", x_map.shape)
         x_down = self.pool(x_map)  # (B, 64, H/28, W/28)
         x_down_H, x_down_W = x_down.shape[2:]
         x_down = x_down.view(B, self.embed_dims[0], -1).permute(0, 2, 1)  # (B, H/28 * W/28, 64)
         kv = self.kv(x_down).view(B, -1, 2, self.embed_dims[0]).permute(2, 0, 1, 3)
         k, v = kv[0], kv[1]
+
         self_q = self.q.reshape(8, 8, -1).permute(2, 0, 1)
         self_q = F.interpolate(self_q.unsqueeze(0), size=(x_down_H, x_down_W), mode='bicubic').squeeze(0).permute(1, 2, 0)
         self_q = self_q.reshape(-1, self_q.shape[-1])
+        
         attn = (self.q_embed(self_q) @ k.transpose(-1, -2)) * self.scale
         attn = attn.softmax(-1)
         semantics = attn @ v
         semantics = semantics.view(B, -1, self.embed_dims[0])
+        
         semantics = torch.cat([semantics.unsqueeze(2), x_down.unsqueeze(2)], dim=2)
         se = self.se(semantics.sum(2).mean(1))
         se = se.view(B, 2, self.embed_dims[0]).softmax(1)
         semantics = (semantics * se.unsqueeze(1)).sum(2)
         semantics = self.proxy_ln(semantics)
+        
         block = getattr(self, f"block1")
         for blk in block:
             x, semantics = blk(x, H, W, semantics)
+        
         norm = getattr(self, f"norm1")
         x = norm(x)
         x_out = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2).contiguous()
@@ -616,18 +624,19 @@ class DualVit(nn.Module):
 
         # Stage 1 pixel pathway with Swin
         x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8 * W/8, 192)
-        print("After features[2]:", x_swin.shape)
+        # print("After features[2]:", x_swin.shape)
         H, W = x_swin.shape[1], x_swin.shape[2]
         x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks
-        print("After features[3]:", x_swin.shape)
+        # print("After features[3]:", x_swin.shape)
         x = self.proj1(x_swin.flatten(1, 2))  # [B, H*W, embed_dims[1]]
-        print("After proj1:", x.shape)
+        # print("After proj1:", x.shape)
 
         semantics_embed = getattr(self, f"proxy_embed2")
         semantics = semantics_embed(semantics)
         block = getattr(self, f"block2")
         for blk in block:
             x, semantics = blk(x, H, W, semantics)
+        
         norm = getattr(self, f"norm2")
         x = norm(x)
         x_out = x.view(B, H, W, self.embed_dims[1]).permute(0, 3, 1, 2).contiguous()
@@ -643,21 +652,24 @@ class DualVit(nn.Module):
         for i in range(self.sep_stage, self.num_stages):
             patch_embed = getattr(self, f"patch_embed{i + 1}")
             block = getattr(self, f"block{i + 1}")
-            print(f"patch_embed{i + 1}.proj.weight device:", patch_embed.proj.weight.device)
-            print("Input device to forward_merge:", x.device)
-            print("Input shape to forward_merge:", x.shape)
+            # print(f"patch_embed{i + 1}.proj.weight device:", patch_embed.proj.weight.device)
+            # print("Input device to forward_merge:", x.device)
+            # print("Input shape to forward_merge:", x.shape)
             x, H, W = patch_embed(x)
-            print(f"After patch_embed{i + 1}:", x.shape)
+            # print(f"After patch_embed{i + 1}:", x.shape)
             semantics_embed = getattr(self, f"proxy_embed{i + 1}")
             semantics = semantics_embed(semantics)
+
             x = torch.cat([x, semantics], dim=1)
             for blk in block:
                 x = blk(x, H, W)
+            
             if i != self.num_stages - 1:
                 semantics = x[:, H*W:]
                 x = x[:, 0:H*W]
                 norm_semantics = getattr(self, f"norm_proxy{i + 1}")
                 semantics = norm_semantics(semantics)
+            
             norm = getattr(self, f"norm{i + 1}")
             x = norm(x)
             x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
@@ -720,8 +732,8 @@ class DualVit(nn.Module):
         return out_full
 
     def forward(self, x):
-        print("Input device to forward:", x.device)
-        print("Model device (sample parameter):", self.proj0.weight.device)
+        # print("Input device to forward:", x.device)
+        # print("Model device (sample parameter):", self.proj0.weight.device)
         if self.training:
             return self.forward_single(x)
         else:
