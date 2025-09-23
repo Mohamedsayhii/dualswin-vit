@@ -11,7 +11,8 @@ from mmseg.models.builder import BACKBONES
 import math
 from mmcv.cnn import build_norm_layer
 import warnings
-from torchvision.models import swin_t, Swin_T_Weights
+from torchvision.models.swin_transformer import SwinTransformer
+from torchvision.models import Swin_T_Weights
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class DWConv(nn.Module):
@@ -461,8 +462,20 @@ class DualVit(nn.Module):
         cur = 0
 
         # Swin Transformer for pixel pathway in early stages with pretrained weights
-        self.swin_backbone = swin_t(weights=Swin_T_Weights.IMAGENET1K_V1)
+        self.swin_backbone = SwinTransformer(
+            patch_size=[4, 4],
+            embed_dim=96,
+            depths=[3, 4, 6, 3],  # Match DualVit depths
+            num_heads=[3, 6, 12, 24],
+            window_size=[7, 7],
+            mlp_ratio=4.0,
+            dropout=0.0,
+            attention_dropout=0.0,
+            stochastic_depth_prob=0.1,
+            num_classes=0  # No classification head
+        )
         self.swin_backbone.head = nn.Identity()
+        self.swin_backbone.avgpool = nn.Identity()
         self.swin_backbone.norm = nn.Identity()
         self.swin_backbone.features[2] = CustomPatchMerging(dim=96, out_dim=192)
         swin_dims = [96, 192, 384, 768]
@@ -470,11 +483,6 @@ class DualVit(nn.Module):
 
         # Projection layers (Swin → DualViT)
         self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
-        # print(f"proj0 weight shape after init: {self.proj0.weight.shape} (expected: [{embed_dims[0]}, {swin_dims[0]}])")
-        if self.proj0.weight.shape != torch.Size([embed_dims[0], swin_dims[0]]):
-            # print(f"Warning: proj0 initialized incorrectly. Expected [{embed_dims[0]}, {swin_dims[0]}], got {self.proj0.weight.shape}. Reinitializing.")
-            self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
-            # print(f"proj0 reinitialized to: {self.proj0.weight.shape}")
         self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
         self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
         self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
@@ -555,16 +563,16 @@ class DualVit(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-            print(f"Initializing weights with pretrained={pretrained}")
-            if isinstance(pretrained, str):
-                self.apply(_init_weights)
-                logger = get_root_logger()
-                print(f"Loading checkpoint from {pretrained}")
-                load_checkpoint(self, pretrained, strict=False, logger=logger)
-            else:
-                self.apply(_init_weights)
-                print("No pretrained checkpoint provided, using fresh weights")
-
+        if isinstance(pretrained, str):
+            self.apply(_init_weights)
+            logger = get_root_logger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        else:
+            self.apply(_init_weights)
+            # Load pretrained Swin-T weights into custom SwinTransformer
+            pretrained_weights = Swin_T_Weights.IMAGENET1K_V1.get_state_dict(progress=True)
+            missing_keys, unexpected_keys = self.swin_backbone.load_state_dict(pretrained_weights, strict=False)
+            print(f"Loaded pretrained Swin-T weights. Missing keys: {missing_keys}")
         # Log projection layer shapes for debugging
         # print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
         # print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
