@@ -9,7 +9,7 @@ import torch
 # Enable anomaly detection
 torch.autograd.set_detect_anomaly(True)
 
-from mmcv.runner import init_dist
+from mmcv.runner import init_dist, save_checkpoint
 from mmcv.utils import Config, DictAction, get_git_hash
 
 from mmseg import __version__
@@ -153,6 +153,8 @@ def main():
             PALETTE=datasets[0].PALETTE)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+
+    # ---- Train ----
     train_segmentor(
         model,
         datasets,
@@ -161,6 +163,11 @@ def main():
         validate=(not args.no_validate),
         timestamp=timestamp,
         meta=meta)
+
+    # ---- Save final checkpoint ----
+    final_path = osp.join(cfg.work_dir, 'dualswin_model.pth')
+    save_checkpoint(model, final_path, meta=meta)
+    logger.info(f'Final model saved at {final_path}')
 
 
 if __name__ == '__main__':
