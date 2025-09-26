@@ -204,7 +204,6 @@ class DualAttention(nn.Module):
         return semantics
 
     def forward(self, x, H, W, semantics):
-        semantics = semantics.clone()
         semantics = semantics + self.drop_path(self.gamma1 * self.selfatt(semantics))
         B, N, C = x.shape
         B_p, N_p, C_p = semantics.shape
@@ -223,7 +222,7 @@ class DualAttention(nn.Module):
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        return x.clone(), semantics.clone()
+        return x, semantics
 
 class MergeBlock(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio, drop_path=0., norm_layer=nn.LayerNorm, is_last=False):
@@ -262,14 +261,13 @@ class MergeBlock(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, H, W):
-        x = x.clone()
         x = x + self.drop_path(self.gamma1 * self.attn(self.norm1(x), H, W))
         if self.is_last:
             x, _ = torch.split(x, [H*W, x.shape[1] - H*W], dim=1)
             x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x), H, W))
         else:
             x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x), H, W))
-        return x.clone()
+        return x
 
 class DualBlock(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio, drop_path=0., norm_layer=nn.LayerNorm):
@@ -304,11 +302,10 @@ class DualBlock(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, H, W, semantics):
-        x = x.clone()
         _x, semantics = self.attn(self.norm1(x), H, W, semantics)
         x = x + self.drop_path(self.gamma1 * _x)
         x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x), H, W))
-        return x.clone(), semantics.clone()
+        return x, semantics
 
 class Stem(nn.Module):
     def __init__(self, in_channels, stem_hidden_dim, out_channels):
