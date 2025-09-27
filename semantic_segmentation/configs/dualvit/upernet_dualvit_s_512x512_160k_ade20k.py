@@ -37,6 +37,5 @@ lr_config = dict(_delete_=True, policy='poly',
 # data=dict(samples_per_gpu=2)
 data=dict(samples_per_gpu=1, workers_per_gpu=2)
 
-# optimizer_config = dict(type='Fp16OptimizerHook', loss_scale=512.)
-optimizer_config = dict()
-# fp16 = dict()
+optimizer_config = dict(type='Fp16OptimizerHook', loss_scale=512.)
+fp16 = dict()
