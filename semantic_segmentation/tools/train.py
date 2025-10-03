@@ -164,6 +164,12 @@ def main():
         timestamp=timestamp,
         meta=meta)
 
+    # ---- Add CLASSES & PALETTE before saving ----
+    meta.update(dict(
+        CLASSES=datasets[0].CLASSES,
+        PALETTE=datasets[0].PALETTE
+    ))
+
     # ---- Save final checkpoint ----
     final_path = osp.join(cfg.work_dir, 'dualswin_model.pth')
     save_checkpoint(model, final_path, meta=meta)
