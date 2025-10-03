@@ -428,6 +428,7 @@ class CustomPatchMerging(nn.Module):
         B, H, W, C = x.shape  # [B, 128, 128, 96]
         if H % 2 != 0 or W % 2 != 0:
             x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
+            H, W = x.shape[1], x.shape[2]
         x = x.view(B, H // 2, 2, W // 2, 2, C).permute(0, 1, 3, 2, 4, 5).reshape(B, H // 2, W // 2, 4 * C)
         x = self.norm(x)
         x = self.reduction(x)
