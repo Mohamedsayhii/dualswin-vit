@@ -463,7 +463,7 @@ class DualVit(nn.Module):
             depths=depths,  # Match DualVit depths
             num_heads=num_heads,
             window_size=[7, 7],
-            mlp_ratio=mlp_ratios,
+            mlp_ratio=4.0,
             dropout=0.0,
             attention_dropout=0.0,
             stochastic_depth_prob=0.1,
@@ -474,7 +474,6 @@ class DualVit(nn.Module):
         self.swin_backbone.avgpool = nn.Identity()
         self.swin_backbone.norm = nn.Identity()
         self.swin_backbone.features[2] = CustomPatchMerging(dim=64, out_dim=128)
-        # print("Swin backbone features:", self.swin_backbone.features)  # Debug print
 
         for i in range(self.num_stages):
             if i == 0:
