@@ -562,23 +562,20 @@ class DualVit(nn.Module):
             raise TypeError('pretrained must be a str or None')
 
     def forward_sep(self, x):
-        # print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
-        B, C, input_H, input_W = x.shape  # Store input shape
+        B, C, input_H, input_W = x.shape  # e.g., [B, 3, 512, 512]
         outs = []
 
         # Stage 0 pixel pathway with Swin
-        x_swin = self.swin_backbone.features[0](x)  # Patch embedding: (B, H/4, W/4, 96)
-        # print("After features[0]:", x_swin.shape)
-        x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: (B, H/4, W/4, 96)
-        # print("After features[1]:", x_swin.shape)
+        x_swin = self.swin_backbone.features[0](x)  # Patch embedding: [B, H/4, W/4, 64]
+        x_swin = self.swin_backbone.features[1](x_swin)  # Dropout: [B, H/4, W/4, 64]
         H, W = x_swin.shape[1], x_swin.shape[2]
-        x_swin_flat = x_swin.flatten(1, 2)
-        # Reshape for semantic pathway
-        x_map = x_swin.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
-        # print("After x_map:", x_map.shape)
-        x_down = self.pool(x_map)  # (B, 64, H/28, W/28)
+        x = x_swin.flatten(1, 2)  # [B, (H/4)*(W/4), 64] for DualBlock
+
+        # Semantic pathway: directly use x_swin for pooling
+        x_map = x_swin.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # [B, 64, H/4, W/4]
+        x_down = self.pool(x_map)  # [B, 64, H/28, W/28]
         x_down_H, x_down_W = x_down.shape[2:]
-        x_down = x_down.view(B, self.embed_dims[0], -1).permute(0, 2, 1)  # (B, H/28 * W/28, 64)
+        x_down = x_down.view(B, self.embed_dims[0], -1).permute(0, 2, 1)  # [B, (H/28)*(W/28), 64]
         kv = self.kv(x_down).view(B, -1, 2, self.embed_dims[0]).permute(2, 0, 1, 3)
         k, v = kv[0], kv[1]
 
@@ -603,19 +600,16 @@ class DualVit(nn.Module):
         
         norm = getattr(self, f"norm1")
         x = norm(x)
-        x_out = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2).contiguous()
+        x_out = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2).contiguous()  # [B, 64, H/4, W/4]
         outs.append(x_out)
         norm_semantics = getattr(self, f"norm_proxy1")
         semantics = norm_semantics(semantics)
 
         # Stage 1 pixel pathway with Swin
-        x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: (B, H/8 * W/8, 192)
-        # print("After features[2]:", x_swin.shape)
+        x_swin = self.swin_backbone.features[2](x_swin)  # Patch merging: [B, H/8, W/8, 128]
+        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks: [B, H/8, W/8, 128]
         H, W = x_swin.shape[1], x_swin.shape[2]
-        x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks
-        # print("After features[3]:", x_swin.shape)
-        x = x_swin.flatten(1, 2)  # [B, H*W, embed_dims[1]]
-        # print("After proj1:", x.shape)
+        x = x_swin.flatten(1, 2)  # [B, (H/8)*(W/8), 128]
 
         semantics_embed = getattr(self, f"proxy_embed2")
         semantics = semantics_embed(semantics)
@@ -625,9 +619,8 @@ class DualVit(nn.Module):
         
         norm = getattr(self, f"norm2")
         x = norm(x)
-        x_out = x.view(B, H, W, self.embed_dims[1]).permute(0, 3, 1, 2).contiguous()
+        x_out = x.view(B, H, W, self.embed_dims[1]).permute(0, 3, 1, 2).contiguous()  # [B, 128, H/8, W/8]
         outs.append(x_out)
-
         norm_semantics = getattr(self, f"norm_proxy2")
         semantics = norm_semantics(semantics)
 
