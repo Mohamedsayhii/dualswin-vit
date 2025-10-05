@@ -12,7 +12,6 @@ import math
 from mmcv.cnn import build_norm_layer
 import warnings
 from torchvision.models.swin_transformer import SwinTransformer
-from torchvision.models import Swin_T_Weights
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class DWConv(nn.Module):
@@ -444,8 +443,7 @@ class DualVit(nn.Module):
                  drop_path_rate=0., 
                  depths=[3, 4, 6, 3],
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), 
-                 use_checkpoint=False,
-                 swin_dims=[96, 192, 384, 768]):
+                 use_checkpoint=False):
 
         super().__init__()
         in_chans=3
@@ -454,7 +452,6 @@ class DualVit(nn.Module):
         
         self.sep_stage = 2
         self.embed_dims = embed_dims
-        self.swin_dims = swin_dims
         # print(f"Initializing DualVit with swin_dims={swin_dims}, embed_dims={embed_dims}")
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
@@ -462,28 +459,22 @@ class DualVit(nn.Module):
         # Swin Transformer for pixel pathway in early stages with pretrained weights
         self.swin_backbone = SwinTransformer(
             patch_size=[4, 4],
-            embed_dim=96,
-            depths=[3, 4, 6, 3],  # Match DualVit depths
-            num_heads=[3, 6, 12, 24],
+            embed_dim=64,
+            depths=depths,  # Match DualVit depths
+            num_heads=num_heads,
             window_size=[7, 7],
-            mlp_ratio=4.0,
+            mlp_ratio=mlp_ratios,
             dropout=0.0,
             attention_dropout=0.0,
             stochastic_depth_prob=0.1,
-            num_classes=0  # No classification head
+            num_classes=0,  # No classification head
+            norm_layer=norm_layer
         )
         self.swin_backbone.head = nn.Identity()
         self.swin_backbone.avgpool = nn.Identity()
         self.swin_backbone.norm = nn.Identity()
-        self.swin_backbone.features[2] = CustomPatchMerging(dim=96, out_dim=192)
-        swin_dims = [96, 192, 384, 768]
+        self.swin_backbone.features[2] = CustomPatchMerging(dim=64, out_dim=128)
         # print("Swin backbone features:", self.swin_backbone.features)  # Debug print
-
-        # Projection layers (Swin → DualViT)
-        self.proj0 = nn.Linear(swin_dims[0], embed_dims[0])
-        self.proj1 = nn.Linear(swin_dims[1], embed_dims[1])
-        self.proj2 = nn.Linear(swin_dims[2], embed_dims[2])
-        self.proj3 = nn.Linear(swin_dims[3], embed_dims[3])
 
         for i in range(self.num_stages):
             if i == 0:
@@ -565,17 +556,10 @@ class DualVit(nn.Module):
             self.apply(_init_weights)
             logger = get_root_logger()
             load_checkpoint(self, pretrained, strict=False, logger=logger)
-        else:
+        elif pretrained is None:
             self.apply(_init_weights)
-            # Load pretrained Swin-T weights into custom SwinTransformer
-            pretrained_weights = Swin_T_Weights.IMAGENET1K_V1.get_state_dict(progress=True)
-            missing_keys, unexpected_keys = self.swin_backbone.load_state_dict(pretrained_weights, strict=False)
-            print(f"Loaded pretrained Swin-T weights. Missing keys: {missing_keys}")
-        # Log projection layer shapes for debugging
-        # print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
-        # print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
-        # print(f"proj2 weight shape: {self.proj2.weight.shape} (expected: [{self.embed_dims[2]}, {self.swin_dims[2]}])")
-        # print(f"proj3 weight shape: {self.proj3.weight.shape} (expected: [{self.embed_dims[3]}, {self.swin_dims[3]}])")
+        else:
+            raise TypeError('pretrained must be a str or None')
 
     def forward_sep(self, x):
         # print("Input shape to forward_sep:", x.shape)  # Should be [1, 3, 512, 512]
@@ -589,12 +573,8 @@ class DualVit(nn.Module):
         # print("After features[1]:", x_swin.shape)
         H, W = x_swin.shape[1], x_swin.shape[2]
         x_swin_flat = x_swin.flatten(1, 2)
-        # print("Before proj0 input shape:", x_swin_flat.shape)
-        # print(f"proj0 weight shape in forward_sep: {self.proj0.weight.shape}")
-        x = self.proj0(x_swin_flat)  # [B, H*W, embed_dims[0]]
-        # print("After proj0:", x.shape)
         # Reshape for semantic pathway
-        x_map = x.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
+        x_map = x_swin.view(B, H, W, self.embed_dims[0]).permute(0, 3, 1, 2)  # (B, 64, H/4, W/4)
         # print("After x_map:", x_map.shape)
         x_down = self.pool(x_map)  # (B, 64, H/28, W/28)
         x_down_H, x_down_W = x_down.shape[2:]
@@ -634,7 +614,7 @@ class DualVit(nn.Module):
         H, W = x_swin.shape[1], x_swin.shape[2]
         x_swin = self.swin_backbone.features[3](x_swin)  # Transformer blocks
         # print("After features[3]:", x_swin.shape)
-        x = self.proj1(x_swin.flatten(1, 2))  # [B, H*W, embed_dims[1]]
+        x = x_swin.flatten(1, 2)  # [B, H*W, embed_dims[1]]
         # print("After proj1:", x.shape)
 
         semantics_embed = getattr(self, f"proxy_embed2")
@@ -647,6 +627,7 @@ class DualVit(nn.Module):
         x = norm(x)
         x_out = x.view(B, H, W, self.embed_dims[1]).permute(0, 3, 1, 2).contiguous()
         outs.append(x_out)
+
         norm_semantics = getattr(self, f"norm_proxy2")
         semantics = norm_semantics(semantics)
 
