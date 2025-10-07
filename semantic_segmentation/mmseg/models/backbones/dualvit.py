@@ -571,6 +571,13 @@ class DualVit(nn.Module):
             pretrained_weights = Swin_T_Weights.IMAGENET1K_V1.get_state_dict(progress=True)
             missing_keys, unexpected_keys = self.swin_backbone.load_state_dict(pretrained_weights, strict=False)
             print(f"Loaded pretrained Swin-T weights. Missing keys: {missing_keys}")
+            # Initialize projections with partial identity
+            nn.init.eye_(self.proj0.weight[:64, :64])  # 96→64
+            if self.proj0.bias is not None:
+                nn.init.constant_(self.proj0.bias, 0)
+            nn.init.eye_(self.proj1.weight[:128, :128])  # 192→128
+            if self.proj1.bias is not None:
+                nn.init.constant_(self.proj1.bias, 0)
         # Log projection layer shapes for debugging
         # print(f"proj0 weight shape: {self.proj0.weight.shape} (expected: [{self.embed_dims[0]}, {self.swin_dims[0]}])")
         # print(f"proj1 weight shape: {self.proj1.weight.shape} (expected: [{self.embed_dims[1]}, {self.swin_dims[1]}])")
