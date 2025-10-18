@@ -411,7 +411,8 @@ class BasicLayer(nn.Module):
     def __init__(self,
                  dim,
                  num_heads,
-                 window_size=8,
+                 depth=2,
+                 window_size=18,
                  mlp_ratio=4.,
                  qkv_bias=True,
                  qk_scale=None,
@@ -440,7 +441,7 @@ class BasicLayer(nn.Module):
                 attn_drop=attn_drop,
                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                 norm_layer=norm_layer)
-            for i in range(1)])
+            for i in range(depth)])
 
         # patch merging layer
         if downsample is not None:
