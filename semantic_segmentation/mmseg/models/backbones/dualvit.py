@@ -252,15 +252,15 @@ class WindowAttention(nn.Module):
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q = qkv[0]  # make torchscript happy (cannot use tensor as tuple)
-        print('q inside', q.shape)
         k, v = kv[0], kv[1]
-        print('k inside', k.shape)
+        
         B, num_heads, num_kv, head_dim = k.shape
         B_, _, num_q, _ = q.shape
         if B_ != B:
             repeats = B_ // B
             k = torch.repeat_interleave(k, repeats, dim=0)
             v = torch.repeat_interleave(v, repeats, dim=0)
+       
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
 
@@ -566,7 +566,6 @@ class DualAttention(nn.Module):
         B, N, C = x.shape
         B_p, N_p, C_p = semantics.shape
         q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        print('q outside', q.shape)
         q_semantics = self.q_proxy(self.q_proxy_ln(semantics)).reshape(B_p, N_p, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         kv_semantics = self.kv_proxy(x).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -589,15 +588,6 @@ class DualBlock(nn.Module):
         self.norm2 = norm_layer(dim)
 
         self.attn = DualAttention(dim, num_heads, drop_path=drop_path)
-        self.mlp = PVT2FFN(in_features=dim, hidden_features=int(dim * mlp_ratio))
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        
-        layer_scale_init_value = 1e-6
-        self.gamma1 = nn.Parameter(layer_scale_init_value * torch.ones((dim)), 
-            requires_grad=True) if layer_scale_init_value > 0 else None
-        self.gamma2 = nn.Parameter(layer_scale_init_value * torch.ones((dim)), 
-            requires_grad=True) if layer_scale_init_value > 0 else None
-        self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -873,7 +863,6 @@ class DualVit(nn.Module):
                 kv = self.kv(x_down).view(B, -1,  2, C).permute(2, 0, 1, 3)
                 k, v = kv[0], kv[1]  # B, N, C
 
-                print('k outside', k.shape)
                 self_q = self.q.reshape(8, 8, -1).permute(2, 0, 1)
                 self_q = F.interpolate(self_q.unsqueeze(0), size=(x_down_H, x_down_W), mode='bicubic').squeeze(0).permute(1, 2, 0)
                 self_q = self_q.reshape(-1, self_q.shape[-1])
