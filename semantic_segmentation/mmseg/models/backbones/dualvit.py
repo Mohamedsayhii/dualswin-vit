@@ -263,12 +263,14 @@ class WindowAttention(nn.Module):
             v = torch.repeat_interleave(v, repeats, dim=0)
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
+
         if num_kv == num_q:
             print('cross')
             relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
                 self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1) # Wh*Ww,Wh*Ww,nH
             relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # nH, Wh*Ww, Wh*Ww
             attn = attn + relative_position_bias.unsqueeze(0)
+            
         if mask is not None:
             nW = mask.shape[0]
             if num_kv == num_q:
@@ -304,7 +306,7 @@ class SwinTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, num_heads, window_size, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
@@ -409,7 +411,7 @@ class BasicLayer(nn.Module):
     def __init__(self,
                  dim,
                  num_heads,
-                 window_size=7,
+                 window_size=8,
                  mlp_ratio=4.,
                  qkv_bias=True,
                  qk_scale=None,
