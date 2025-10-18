@@ -10,7 +10,6 @@ model = dict(
         drop_path_rate=0.15, #0.2, 
         depths=[3, 4, 6, 3],
         use_checkpoint=False,
-        swin_dims=[96, 192, 384, 768]
     ),
     decode_head=dict(
         in_channels=[64, 128, 320, 448],
