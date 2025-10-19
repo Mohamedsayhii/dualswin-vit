@@ -33,8 +33,8 @@ lr_config = dict(_delete_=True, policy='poly',
                  power=1.0, min_lr=0.0, by_epoch=False)
 
 # By default, models are trained on 8 GPUs with 2 images per GPU
-# data=dict(samples_per_gpu=2)
-data=dict(samples_per_gpu=1, workers_per_gpu=2)
+data=dict(samples_per_gpu=2, workers_per_gpu=4)
+# data=dict(samples_per_gpu=1, workers_per_gpu=2)
 
 optimizer_config = dict(type='Fp16OptimizerHook', loss_scale=512.)
 fp16 = dict()
