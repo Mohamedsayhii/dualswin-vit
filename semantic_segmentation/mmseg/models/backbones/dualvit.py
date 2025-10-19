@@ -253,7 +253,11 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q = qkv[0]  # make torchscript happy (cannot use tensor as tuple)
         k, v = kv[0], kv[1]
-        
+
+        if k.size(0) != q.size(0):
+            k = k.repeat(q.size(0) // k.size(0), 1, 1, 1)
+            v = v.repeat(q.size(0) // v.size(0), 1, 1, 1)
+
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
 
