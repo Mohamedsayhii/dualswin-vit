@@ -1,5 +1,5 @@
 sudo apt update && sudo apt install rsync 
-git clone https://github.com/Mohamedsayhii/dualswin-vit.git
+git clone -b cloud-training --single-branch https://github.com/Mohamedsayhii/dualswin-vit.git
 
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
