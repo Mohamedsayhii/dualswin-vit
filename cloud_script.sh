@@ -1,14 +1,20 @@
 sudo apt update && sudo apt install rsync 
+
 git clone -b cloud-training --single-branch https://github.com/Mohamedsayhii/dualswin-vit.git
 
+curl -L -o ade20k.zip https://www.kaggle.com/api/v1/datasets/download/awsaf49/ade20k-dataset
+
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+
 bash Miniconda3-latest-Linux-x86_64.sh
+
 source ~/.bashrc
+
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-conda create -n openmmlab39 python=3.9 -y
-conda activate openmmlab39
+conda create -n dualswin python=3.9 -y
+conda activate dualswin
 
 pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 \
   -f https://download.pytorch.org/whl/torch_stable.html
