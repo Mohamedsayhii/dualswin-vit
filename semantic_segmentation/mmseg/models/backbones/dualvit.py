@@ -264,6 +264,15 @@ class WindowAttention(nn.Module):
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+
+        # ensure bias matches attn shape
+        if relative_position_bias.shape[-1] != attn.shape[-1]:
+            relative_position_bias = F.interpolate(
+                relative_position_bias.unsqueeze(0),
+                size=(relative_position_bias.shape[1], attn.shape[-1]),
+                mode='bilinear'
+            ).squeeze(0)
+
         attn = attn + relative_position_bias.unsqueeze(0)
 
         if mask is not None:
@@ -405,8 +414,8 @@ class BasicLayer(nn.Module):
     def __init__(self,
                  dim,
                  num_heads,
-                 depth=2,
-                 window_size=18,
+                 window_size,
+                 depth=1,
                  mlp_ratio=4.,
                  qkv_bias=True,
                  qk_scale=None,
@@ -527,7 +536,8 @@ class DualAttention(nn.Module):
             requires_grad=True) if layer_scale_init_value > 0 else None
         self.apply(self._init_weights)
 
-        self.swin_transformer = BasicLayer(dim, num_heads)
+        self.swin_transformer1 = BasicLayer(dim, num_heads, 7)
+        self.swin_transformer2 = BasicLayer(dim, num_heads, 14)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -572,7 +582,9 @@ class DualAttention(nn.Module):
         semantics = semantics + self.drop_path(self.gamma3 * self.mlp_proxy(self.p_ln(semantics)))
 
         kv = self.kv(self.proxy_ln(semantics)).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        x = self.swin_transformer(unnorm_x, H, W, kv)
+        x1 = self.swin_transformer1(unnorm_x, H, W, kv)
+        x2 = self.swin_transformer2(unnorm_x, H, W, kv)
+        x = x1 + x2
 
         return x, semantics
 
