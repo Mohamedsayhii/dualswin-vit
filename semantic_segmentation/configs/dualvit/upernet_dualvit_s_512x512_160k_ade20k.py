@@ -1,6 +1,6 @@
 _base_ = [
     '../_base_/models/upernet_dualvit.py', '../_base_/datasets/cade20k.py',
-    '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k.py'
+    '../_base_/default_runtime.py', '../_base_/schedules/schedule_20k.py'
 ]
 model = dict(
     backbone=dict(
@@ -13,11 +13,11 @@ model = dict(
     ),
     decode_head=dict(
         in_channels=[64, 128, 320, 448],
-        num_classes=150
+        # num_classes=150
     ),
     auxiliary_head=dict(
         in_channels=320,
-        num_classes=150
+        # num_classes=150
     ))
 
 # AdamW optimizer, no weight decay for position embedding & layer norm in backbone
@@ -34,7 +34,7 @@ lr_config = dict(_delete_=True, policy='poly',
 
 # By default, models are trained on 8 GPUs with 2 images per GPU
 # data=dict(samples_per_gpu=2)
-data=dict(samples_per_gpu=1, workers_per_gpu=2)
+data=dict(samples_per_gpu=2, workers_per_gpu=4)
 
-optimizer_config = dict(type='Fp16OptimizerHook', loss_scale=512.)
+optimizer_config = dict(type='Fp16OptimizerHook', loss_scale='dynamic')
 fp16 = dict()
