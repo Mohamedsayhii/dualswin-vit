@@ -701,15 +701,15 @@ class Stem(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=7, stride=2,
                       padding=3, bias=False),  # 112x112
-            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
             nn.ReLU(inplace=True),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
                       padding=1, bias=False),  # 112x112
-            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
             nn.ReLU(inplace=True),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1,
                       padding=1, bias=False),  # 112x112
-            build_norm_layer(dict(type='BN', requires_grad=True), hidden_dim)[1],
+            build_norm_layer(dict(type='SyncBN', requires_grad=True), hidden_dim)[1],
             nn.ReLU(inplace=True),
         )
         self.proj = nn.Conv2d(hidden_dim,
